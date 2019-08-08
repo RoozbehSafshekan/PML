@@ -1,0 +1,97 @@
+---
+title: "PML Course Project"
+author: "Roozbeh Safshekan"
+date: "10/07/2019"
+output: html_document
+---
+**Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project we use data from accelerometers of 6 participants to predict how tha participants exercise.
+
+**Data**
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.
+
+**Analysis**
+
+Downloading required packages
+```{r}
+library(ggplot2);library(lattice);library(caret);library(randomForest)
+```
+Getting the data
+```{r}
+pretraining <- read.csv("C:/Users/Roozbeh/desktop/pml-training.csv", header=TRUE, sep=",")
+pretesting <- read.csv("C:/Users/Roozbeh/desktop/pml-testing.csv", header=TRUE, sep=",")
+dim(pretraining);dim(pretesting)
+```
+Removing variables with missing values
+```{r}
+a <- colSums(is.na(pretraining))+colSums(is.na(pretesting))
+pretraining <- pretraining[,(a==0)]
+pretesting <- pretesting[,(a==0)]
+dim(pretraining); dim(pretesting)
+```
+Removing near-zero-variance variables
+```{r}
+a <- nearZeroVar(pretraining,saveMetrics = TRUE)$nzv + nearZeroVar(pretesting,saveMetrics = TRUE)$nzv
+pretraining <- pretraining[,a==0]
+pretesting <- pretesting[,a==0]
+dim(pretraining);dim(pretesting)
+```
+Removing non-numeric variables
+```{r}
+a <- lapply(pretraining, class) == "numeric"
+b <- lapply(pretesting, class) == "numeric"
+a <- a + b
+training <- pretraining[,a==2]
+testing <- pretesting[,a==2]
+training$classe <- pretraining$classe
+testing$problem_id <- pretesting$problem_id
+dim(training); dim(testing)
+```
+Splitting the training set to training (70%) and validation sets (30%)
+```{r}
+set.seed(121212)
+inTrain<- createDataPartition(training$classe, p=.7, list=FALSE)
+trainset<- training[inTrain, ]
+validset <- training[-inTrain, ]
+dim(trainset); dim(validset)
+```
+Generating Random Forest, Generalized Boosted Regression and Support Vector Machines models (performing 5 fold CV two times)
+```{r}
+control <- trainControl(method="repeatedcv", number=5, repeats=2)
+RFMod <- train(classe~., method="rf", data=trainset, trControl=control) 
+GBMMod <- train(classe~., method = "gbm", data=trainset, trControl=control, verbose = FALSE)
+SVMMod <- train(classe~., method = "svmRadial", data=trainset, trControl=control)
+
+RFPred <- predict(RFMod,validset)
+GBMPred <- predict(GBMMod,validset)
+SVMPred <- predict(SVMMod,validset)
+```
+Ensemble modeling
+```{r}
+ComDF <- data.frame(RFPred, GBMPred, SVMPred, classe=validset$classe)
+ComMod <-train(classe ~ .,method = "rf",data = ComDF, trControl=control)
+
+ComPred <- predict(ComMod, validset)
+```
+Comparing the accuracy of different models
+```{r}
+RFAccuracy <- confusionMatrix(validset$classe, RFPred)$overall[1]
+GBMAccuracy <- confusionMatrix(validset$classe, GBMPred)$overall[1]
+SVMAccuracy <- confusionMatrix(validset$classe, SVMPred)$overall[1]
+ComAccuracy <- confusionMatrix(validset$classe, ComPred)$overall[1]
+
+RFAccuracy; GBMAccuracy;SVMAccuracy;ComAccuracy
+```
+Random Forest and ensemble model have the highest accuracy rate. The out-of-sample-error is:
+```{r}
+1- unname(RFAccuracy)
+```
+**Prediction Quiz**
+Applying the Random Forest model to the testing set to complete the course project prediction quiz
+```{r}
+pred <- predict(RFMod, newdata = testing)
+pred
+```
+
